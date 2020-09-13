@@ -10,17 +10,15 @@ object MuxPow2 {
     /*
     * Returns the output of the output of the mux.
     * The number of inputs should be a power of 2.
-    * @T:   input type
-    * @gen: indicator of input data type
     * @sel: selection signal
     * @xs:  vector of inputs
     */
-    def apply[T <: Data](gen: T, sel: UInt, xs: Seq[T]): T = {
+    def apply(sel: UInt, xs: Seq[Clock]): Clock = {
         val rank = sel.getWidth
         val n = 1 << rank
         assert(rank > 0)
         if (rank == 1) {
-            Mux2(gen, sel, xs)
+            ClockMux2(sel, xs)
         } else {
             // sel for the final input
             val sel_MSB = sel(rank - 1)
@@ -31,11 +29,11 @@ object MuxPow2 {
             // inputs within low range
             val xsL = (0 until (n >> 1)).map((idx: Int) => xs(idx))
             // smaller mux for high range
-            val muxG = MuxPow2(gen, sel_LBS, xsG)
+            val muxG = MuxPow2(sel_LBS, xsG)
             // smaller mux for low range
-            val muxL = MuxPow2(gen, sel_LBS, xsL)
+            val muxL = MuxPow2(sel_LBS, xsL)
             // mux2 for the final output
-            Mux2(gen, sel_MSB, VecInit(muxL, muxG))
+            ClockMux2(sel_MSB, VecInit(muxL, muxG))
         }
     }
 }
@@ -47,19 +45,17 @@ object MuxAny {
     /*
     * Returns the output of the mux.
     * The number of inputs should be larger than 1.
-    * @T:   input type
-    * @gen: indicator of input data type
     * @sel: selection signal
     * @xs:  vector of inputs
     */
-    def apply[T <: Data](gen: T, sel: UInt, xs: Seq[T]): T = {
+    def apply(sel: UInt, xs: Seq[Clock]): Clock = {
         val n = xs.length
         assert(n > 1)
         val rankCeil = log2Up(n)
         assert(sel.getWidth >= rankCeil)
         val is_n_pow2 = (1 << rankCeil) == n
         if (is_n_pow2) {
-            MuxPow2(gen, sel, xs)
+            MuxPow2(sel, xs)
         } else {
             val rankFloor = rankCeil - 1
             // number of inputs which lie in low range
@@ -83,12 +79,13 @@ object MuxAny {
                 // use the input directly and finish recursion
                 xs(n - 1)
             } else {
-                MuxAny(gen, sel_LBG, xsG)
+                MuxAny(sel_LBG, xsG)
             }
             // smaller mux for low range
-            val yL = MuxAny(gen, sel_LBL, xsL)
+            val yL = MuxAny(sel_LBL, xsL)
+
             // mux2 for the final output
-            Mux2(gen, sel_MSB, VecInit(yL, yG))
+            ClockMux2(sel_MSB, VecInit(yL, yG))
         }
     }
 }
@@ -96,14 +93,12 @@ object MuxAny {
 
 /*
 * Mux module for any given number of inputs
-* @T:   input type
-* @gen: indicator of input data type
 * @n:   number of inputs
-* @io:  MuxIO[T](n)
+* @io:  MuxIO[Clock](n)
 */
-class MuxN[T <: Data](private val gen: T, val n: Int) extends Module {
+class MuxN(val n: Int) extends Module {
     assert(n > 1)
     override def desiredName = s"Mux${n.toString}"
-    val io = IO(MuxIO(gen, n))
-    io.y := MuxAny(gen, io.sel, io.xs)
+    val io = IO(MuxIO(n))
+    io.y := MuxAny(io.sel, io.xs)
 }
